@@ -75,10 +75,7 @@ jobs:
               list,
               '',
               '### Context:',
-              'This issue was auto‑generated because the PR carries the `add-to-onboarding` label. Please slot these docs into the onboarding flow during the next sprint.',
-              '',
-              '---',
-              '**Note**: Part of the semi‑automated onboarding documentation process.'
+              'This issue was auto‑generated because the PR carries the `add-to-onboarding` label. Please include these docs into the onboarding flow during the next sprint.',
             ].join('\n');
 
             const { data: issue } = await github.rest.issues.create({
