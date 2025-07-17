@@ -1,13 +1,12 @@
 name: Add to Onboarding
 
-# the default GITHUB_TOKEN will be enough… no extra secret needed
 permissions:
-  contents: read          # safest default
-  issues: write           # we will open an issue
-  pull-requests: write    # we will add a comment on the PR
+  contents: read
+  issues: write
+  pull-requests: write
 
 on:
-  pull_request_target:    # <<‑‑ runs in the base repo context
+  pull_request_target:
     types: [labeled]
 
 jobs:
@@ -16,15 +15,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check if PR modifies docs
+      # ---- Step 1: detect documentation changes ----
+      - name: Check docs in PR
         id: check-docs
         uses: actions/github-script@v7
         with:
           script: |
+            const pr = context.payload.pull_request.number;
+
             const { data: files } = await github.rest.pulls.listFiles({
               owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number
+              repo:  context.repo.repo,
+              pull_number: pr
             });
 
             const docsFiles = files.filter(f =>
@@ -37,51 +39,60 @@ jobs:
               return;
             }
 
-            core.setOutput('has_docs', 'true');
-            core.setOutput('doc_files', JSON.stringify(docsFiles));
+            core.setOutput('run_next', 'true');   // flag for next step
 
-      - name: Create issue in the same repo
-        if: steps.check-docs.outputs.has_docs == 'true'
+      # ---- Step 2: create the issue and comment ----
+      - name: Create onboarding issue
+        if: steps.check-docs.outputs.run_next == 'true'
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}   # default token, already present
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const pr      = context.payload.pull_request;
-            const prFiles = JSON.parse('${{ steps.check-docs.outputs.doc_files }}');
+            const pr = context.payload.pull_request;
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              pull_number: pr.number
+            });
 
-            const list = prFiles.map(f =>
+            const docsFiles = files.filter(f =>
+              f.filename.startsWith('data/docs/') ||
+              f.filename.startsWith('src/pages/docs/')
+            );
+
+            const list = docsFiles.map(f =>
               `- ${f.status === 'added' ? '➕' : f.status === 'modified' ? '📝' : '❌'} ${f.filename}`
             ).join('\n');
 
             const body = [
-              '## documentation to add to onboarding',
+              '## Documentation to Add to Onboarding',
               '',
-              `pr: ${pr.title} (#${pr.number})`,
-              `author: @${pr.user.login}`,
-              `link: ${pr.html_url}`,
+              `PR: ${pr.title} (#${pr.number})`,
+              `Author: @${pr.user.login}`,
+              `PR Link: ${pr.html_url}`,
               '',
-              '### files changed:',
+              '### Documentation Files Changed:',
               list,
               '',
-              '### context:',
-              'this issue was auto‑generated because the pr carries the `add-to-onboarding` label, … please slot these docs into the onboarding flow during the next sprint',
+              '### Context:',
+              'This issue was auto‑generated because the PR carries the `add-to-onboarding` label. Please slot these docs into the onboarding flow during the next sprint.',
               '',
               '---',
-              '**note**… semi‑automated onboarding process'
+              '**Note**: Part of the semi‑automated onboarding documentation process.'
             ].join('\n');
 
             const { data: issue } = await github.rest.issues.create({
               owner: context.repo.owner,
               repo:  context.repo.repo,
-              title: `[onboarding] docs from pr #${pr.number}`,
+              title: `[Onboarding] Docs from PR #${pr.number}`,
               body,
               labels: ['documentation', 'onboarding'],
-              assignees: ['Calm-Rock']   // optional… drop if the user is not a collaborator
+              assignees: ['Calm-Rock']   // remove if the user lacks access
             });
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo:  context.repo.repo,
               issue_number: pr.number,
-              body: `📚 onboarding issue created… see #${issue.number}`
+              body: `📚 Onboarding issue created… see #${issue.number}`
             });
